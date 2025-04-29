@@ -212,6 +212,9 @@ class BwuManager : public EndpointManager::FrameProcessor {
           error_stage,
       location::nearby::proto::connections::OperationResultCode
           operation_result_code);
+  bool NeedToSwitchRole(
+      const std::string& endpoint_id, ClientProxy* client, Medium medium,
+      const location::nearby::connections::MediumRole& medium_role);
 
   bool is_single_threaded_for_testing_ = false;
 

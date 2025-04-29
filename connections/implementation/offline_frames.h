@@ -19,8 +19,8 @@
 #include <string>
 #include <vector>
 
-#include "connections/implementation/proto/offline_wire_formats.pb.h"
 #include "connections/connection_options.h"
+#include "connections/implementation/proto/offline_wire_formats.pb.h"
 #include "connections/medium_selector.h"
 #include "internal/platform/byte_array.h"
 #include "internal/platform/exception.h"
@@ -98,6 +98,9 @@ ByteArray ForBwuWebrtcPathAvailable(
     const std::string& peer_id,
     const location::nearby::connections::LocationHint& location_hint_a);
 ByteArray ForBwuFailure(const UpgradePathInfo& info);
+ByteArray ForBwuPathRequest(
+    const std::vector<Medium>& mediums,
+    const location::nearby::connections::MediumRole& medium_role);
 ByteArray ForBwuLastWrite();
 ByteArray ForBwuSafeToClose();
 

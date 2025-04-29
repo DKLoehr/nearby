@@ -211,6 +211,7 @@ cc_library(
     hdrs = [
         "fake_bwu_handler.h",
         "fake_endpoint_channel.h",
+        "mock_client_proxy.h",
         "mock_device.h",
         "mock_service_controller.h",
         "mock_service_controller_router.h",

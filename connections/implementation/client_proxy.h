@@ -60,7 +60,7 @@ namespace connections {
 
 // ClientProxy is tracking state of client's connection, and serves as
 // a proxy for notifications sent to this client.
-class ClientProxy final {
+class ClientProxy {
  public:
   static constexpr int kEndpointIdLength = 4;
   static constexpr absl::Duration
@@ -68,7 +68,7 @@ class ClientProxy final {
 
   explicit ClientProxy(
       ::nearby::analytics::EventLogger* event_logger = nullptr);
-  ~ClientProxy();
+  virtual ~ClientProxy();
   ClientProxy(ClientProxy&&) = default;
   ClientProxy& operator=(ClientProxy&&) = default;
 
@@ -285,7 +285,7 @@ class ClientProxy final {
 
   std::string Dump();
 
-  const location::nearby::connections::OsInfo& GetLocalOsInfo() const;
+  virtual const location::nearby::connections::OsInfo& GetLocalOsInfo() const;
   std::optional<location::nearby::connections::OsInfo> GetRemoteOsInfo(
       absl::string_view endpoint_id) const;
   void SetRemoteOsInfo(
@@ -349,6 +349,9 @@ class ClientProxy final {
 
   // Updates the DCT device name before advertising.
   void UpdateDctDeviceName(absl::string_view device_name);
+
+  std::optional<location::nearby::connections::MediumRole> GetMediumRole(
+      absl::string_view endpoint_id) const;
 
   /** Bitmask for bt multiplex connection support. */
   // Note. Deprecates the first and second bit of BT_MULTIPLEX_ENABLED and

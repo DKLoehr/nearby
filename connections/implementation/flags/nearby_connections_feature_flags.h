@@ -99,6 +99,9 @@ constexpr auto kEnableMultiplexAwdl =
 // Enable/Disable AWDL in Nearby connections SDK.
 constexpr auto kEnableAwdl =
     flags::Flag<bool>(kConfigPackage, "45690762", false);
+// When true, enable multiplexing in NC for AWDL.
+constexpr auto kEnableDynamicRoleSwitch =
+    flags::Flag<bool>(kConfigPackage, "45694118", false);
 }  // namespace nearby_connections_feature
 }  // namespace config_package_nearby
 }  // namespace connections

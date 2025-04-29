@@ -61,7 +61,9 @@ namespace connections {
 
 namespace {
 using ::location::nearby::connections::BandwidthUpgradeNegotiationFrame;
+using ::location::nearby::connections::MediumRole;
 using ::location::nearby::connections::OfflineFrame;
+using ::location::nearby::connections::OsInfo;
 using ::location::nearby::connections::V1Frame;
 using ::location::nearby::proto::connections::BandwidthUpgradeErrorStage;
 using ::location::nearby::proto::connections::BandwidthUpgradeResult;
@@ -290,6 +292,43 @@ void BwuManager::InitiateBwuForEndpoint(ClientProxy* client,
           BandwidthUpgradeErrorStage::NETWORK_AVAILABLE,
           OperationResultCode::NEARBY_GENERIC_OLD_ENDPOINT_CHANNEL_NULL);
       return;
+    }
+
+    if (NearbyFlags::GetInstance().GetBoolFlag(
+            config_package_nearby::nearby_connections_feature::
+                kEnableDynamicRoleSwitch) &&
+        client->GetMediumRole(endpoint_id).has_value()) {
+      MediumRole medium_role = client->GetMediumRole(endpoint_id).value();
+      if (NeedToSwitchRole(endpoint_id, client, proposed_medium, medium_role)) {
+        if (!channel
+                 ->Write(parser::ForBwuPathRequest(
+                     client->GetUpgradeMediums(endpoint_id).GetMediums(true),
+                     medium_role))
+                 .Ok()) {
+          NEARBY_LOGS(ERROR)
+              << "BwuManager couldn't complete the upgrade for endpoint "
+              << endpoint_id << " to medium "
+              << location::nearby::proto::connections::Medium_Name(
+                     proposed_medium)
+              << " because it failed to write the "
+                 "BWU_NEGOTIATION.UPGRADE_PATH_REQUEST OfflineFrame.";
+
+          client->GetAnalyticsRecorder().OnBandwidthUpgradeError(
+              endpoint_id, BandwidthUpgradeResult::RESULT_IO_ERROR,
+              BandwidthUpgradeErrorStage::NETWORK_AVAILABLE,
+              OperationResultCode::
+                  CONNECTIVITY_GENERIC_WRITING_CHANNEL_IO_ERROR);
+          return;
+        }
+        NEARBY_LOGS(INFO)
+            << "BwuManager successfully wrote the "
+               "BANDWIDTH_UPGRADE_NEGOTIATION.UPGRADE_PATH_REQUEST "
+               "OfflineFrame while upgrading endpoint "
+            << endpoint_id << " to medium "
+            << location::nearby::proto::connections::Medium_Name(
+                   proposed_medium);
+        return;
+      }
     }
 
     std::string service_id = channel->GetServiceId();
@@ -755,7 +794,23 @@ void BwuManager::ProcessBwuPathAvailableEvent(
     return;
   }
 
-  if (client->IsIncomingConnection(endpoint_id)) {
+  bool is_incoming = client->IsIncomingConnection(endpoint_id);
+  bool dynamic_role_switch_enabled = NearbyFlags::GetInstance().GetBoolFlag(
+      config_package_nearby::nearby_connections_feature::
+          kEnableDynamicRoleSwitch);
+  bool abort_bwu = false;
+
+  if (!dynamic_role_switch_enabled) {
+    abort_bwu = is_incoming;
+  } else if (is_incoming) {
+    auto medium_role = client->GetMediumRole(endpoint_id);
+    if (medium_role.has_value() &&
+        !NeedToSwitchRole(endpoint_id, client, upgrade_medium,
+                          medium_role.value())) {
+      abort_bwu = true;
+    }
+  }
+  if (abort_bwu) {
     NEARBY_LOGS(INFO)
         << "ProcessBandwidthUpgradePathAvailableEvent ignored by Advertiser";
     return;
@@ -919,7 +974,7 @@ BwuManager::ProcessBwuPathAvailableEventInternal(
   }
 
   bool enable_ble_v2 = NearbyFlags::GetInstance().GetBoolFlag(
-    config_package_nearby::nearby_connections_feature::kEnableBleV2);
+      config_package_nearby::nearby_connections_feature::kEnableBleV2);
   if (NearbyFlags::GetInstance().GetBoolFlag(
           config_package_nearby::nearby_connections_feature::
               kEnableStopBLEScanningOnWifiUpgrade)) {
@@ -1559,6 +1614,24 @@ void BwuManager::AttemptToRecordBandwidthUpgradeErrorForUnknownEndpoint(
                     << BandwidthUpgradeErrorStage_Name(error_stage)
                     << ", but we don't know which endpoint was trying to "
                        "connect to us, so skipping analytics for his error.";
+}
+
+bool BwuManager::NeedToSwitchRole(
+    const std::string& endpoint_id, ClientProxy* client, Medium medium,
+    const location::nearby::connections::MediumRole& medium_role) {
+  if (client->GetLocalOsInfo().type() == OsInfo::APPLE) {
+    switch (medium) {
+      case Medium::WIFI_DIRECT:
+        return medium_role.support_wifi_direct_group_owner();
+      case Medium::WIFI_HOTSPOT:
+        return medium_role.support_wifi_hotspot_host();
+      case Medium::WIFI_AWARE:
+        return medium_role.support_wifi_aware_publisher();
+      default:
+        break;
+    }
+  }
+  return false;
 }
 
 absl::Duration BwuManager::CalculateNextRetryDelay(
