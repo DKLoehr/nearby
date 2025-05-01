@@ -625,11 +625,11 @@ TEST_F(BleV2MediumTest, GattClientConnectToGattServerWorks) {
       gatt_server->UpdateCharacteristic(*server_characteristic, server_value));
 
   // Start GattClient
-  BleV2Peripheral ble_peripheral =
-      ble_b.GetRemotePeripheral(*gatt_server->GetBlePeripheral().GetAddress());
-  std::unique_ptr<GattClient> gatt_client =
-      ble_b.ConnectToGattServer(BleV2Peripheral(ble_peripheral), kTxPowerLevel,
-                                /*ClientGattConnectionCallback=*/{});
+  api::ble_v2::BlePeripheral peripheral =
+      *gatt_server->GetBlePeripheral().GetImpl();
+  std::unique_ptr<GattClient> gatt_client = ble_b.ConnectToGattServer(
+      BleV2Peripheral(ble_b, peripheral.GetUniqueId()), kTxPowerLevel,
+      /*ClientGattConnectionCallback=*/{});
 
   ASSERT_NE(gatt_client, nullptr);
 
@@ -660,13 +660,13 @@ TEST_F(BleV2MediumTest, GattClientConnectToStoppedGattServerFails) {
   std::unique_ptr<GattServer> gatt_server =
       ble_a.StartGattServer(/*ServerGattConnectionCallback=*/{});
   ASSERT_NE(gatt_server, nullptr);
-  BleV2Peripheral ble_peripheral =
-      ble_b.GetRemotePeripheral(*gatt_server->GetBlePeripheral().GetAddress());
+  api::ble_v2::BlePeripheral peripheral =
+      *gatt_server->GetBlePeripheral().GetImpl();
 
   gatt_server->Stop();
-  std::unique_ptr<GattClient> gatt_client =
-      ble_b.ConnectToGattServer(BleV2Peripheral(ble_peripheral), kTxPowerLevel,
-                                /*ClientGattConnectionCallback=*/{});
+  std::unique_ptr<GattClient> gatt_client = ble_b.ConnectToGattServer(
+      BleV2Peripheral(ble_a, peripheral.GetUniqueId()), kTxPowerLevel,
+      /*ClientGattConnectionCallback=*/{});
 
   ASSERT_NE(gatt_client, nullptr);
   EXPECT_FALSE(gatt_client->IsValid());
@@ -684,10 +684,10 @@ TEST_F(BleV2MediumTest, GattClientNotifiedWhenServerDisconnects) {
   ASSERT_NE(gatt_server, nullptr);
   CountDownLatch disconnected_latch(1);
   // Start GattClient
-  BleV2Peripheral ble_peripheral =
-      ble_b.GetRemotePeripheral(*gatt_server->GetBlePeripheral().GetAddress());
+  api::ble_v2::BlePeripheral peripheral =
+      *gatt_server->GetBlePeripheral().GetImpl();
   std::unique_ptr<GattClient> gatt_client = ble_b.ConnectToGattServer(
-      BleV2Peripheral(ble_peripheral), kTxPowerLevel,
+      BleV2Peripheral(ble_b, peripheral.GetUniqueId()), kTxPowerLevel,
       /*ClientGattConnectionCallback=*/{.disconnected_cb = [&]() {
         disconnected_latch.CountDown();
       }});
@@ -724,11 +724,12 @@ TEST_F(BleV2MediumTest, GattClientOperatiosOnCharacteristic) {
   BleV2Peripheral server_ble = gatt_server->GetBlePeripheral();
 
   // Start GattClient.
-  BleV2Peripheral ble_peripheral =
-      ble_b.GetRemotePeripheral(*server_ble.GetAddress());
+  api::ble_v2::BlePeripheral peripheral =
+      *gatt_server->GetBlePeripheral().GetImpl();
+  BleV2Peripheral ble_peripheral(ble_b, peripheral.GetUniqueId());
   ASSERT_TRUE(ble_peripheral.IsValid());
   std::unique_ptr<GattClient> gatt_client =
-      ble_b.ConnectToGattServer(BleV2Peripheral(ble_peripheral), kTxPowerLevel,
+      ble_b.ConnectToGattServer(ble_peripheral, kTxPowerLevel,
                                 /*ClientGattConnectionCallback=*/{});
 
   ASSERT_NE(gatt_client, nullptr);
@@ -808,11 +809,12 @@ TEST_F(BleV2MediumTest, GattClientSubscribeNotificationGattServerCanNotify) {
                                                 ByteArray("any")));
 
   // Start GattClient
-  BleV2Peripheral ble_peripheral =
-      ble_b.GetRemotePeripheral(*server_ble.GetAddress());
+  api::ble_v2::BlePeripheral peripheral =
+      *gatt_server->GetBlePeripheral().GetImpl();
+  BleV2Peripheral ble_peripheral(ble_b, peripheral.GetUniqueId());
   ASSERT_TRUE(ble_peripheral.IsValid());
   std::unique_ptr<GattClient> gatt_client =
-      ble_b.ConnectToGattServer(BleV2Peripheral(ble_peripheral), kTxPowerLevel,
+      ble_b.ConnectToGattServer(ble_peripheral, kTxPowerLevel,
                                 /*ClientGattConnectionCallback=*/{});
   ASSERT_NE(gatt_client, nullptr);
 
@@ -858,117 +860,6 @@ TEST_F(BleV2MediumTest, GattClientSubscribeNotificationGattServerCanNotify) {
       server_characteristic.value(), true, [](absl::string_view value) {}));
   gatt_server->Stop();
   env_.Stop();
-}
-
-TEST(BleV2PeripheralTest, ConstructionWorks) {
-  MediumEnvironment::Instance().Start();
-  BluetoothAdapter adapter_a;
-  BluetoothAdapter adapter_b;
-  BleV2Medium ble_a(adapter_a);
-  BleV2Medium ble_b(adapter_b);
-
-  BleV2Peripheral peripheral =
-      ble_b.GetRemotePeripheral(adapter_a.GetMacAddress());
-
-  ASSERT_TRUE(peripheral.IsValid());
-  EXPECT_EQ(peripheral.GetAddress(), adapter_a.GetMacAddress());
-  MediumEnvironment::Instance().Stop();
-}
-
-TEST(BleV2PeripheralTest, SetIdAndPsmWorks) {
-  MediumEnvironment::Instance().Start();
-  BluetoothAdapter adapter_a;
-  BluetoothAdapter adapter_b;
-  BleV2Medium ble_a(adapter_a);
-  BleV2Medium ble_b(adapter_b);
-  ByteArray id((std::string(kId)));
-  int psm = 2;
-
-  BleV2Peripheral peripheral =
-      ble_b.GetRemotePeripheral(adapter_a.GetMacAddress());
-  peripheral.SetId(id);
-  peripheral.SetPsm(psm);
-
-  ASSERT_TRUE(peripheral.IsValid());
-  EXPECT_EQ(peripheral.GetId(), id);
-  EXPECT_EQ(peripheral.GetPsm(), 2);
-  MediumEnvironment::Instance().Stop();
-}
-
-TEST(BleV2PeripheralTest, CopyConstructorAndAssignmentSuccess) {
-  MediumEnvironment::Instance().Start();
-  BluetoothAdapter adapter_a;
-  BluetoothAdapter adapter_b;
-  BleV2Medium ble_a(adapter_a);
-  BleV2Medium ble_b(adapter_b);
-  ByteArray id((std::string(kId)));
-  int psm = 2;
-
-  BleV2Peripheral peripheral =
-      ble_b.GetRemotePeripheral(adapter_a.GetMacAddress());
-  peripheral.SetId(id);
-  peripheral.SetPsm(psm);
-
-  BleV2Peripheral copy_peripheral_1(peripheral);
-
-  ASSERT_TRUE(copy_peripheral_1.IsValid());
-  EXPECT_EQ(copy_peripheral_1.GetAddress(), adapter_a.GetMacAddress());
-  EXPECT_EQ(copy_peripheral_1.GetId(), id);
-  EXPECT_EQ(copy_peripheral_1.GetPsm(), 2);
-
-  BleV2Peripheral copy_periphera1_2 = peripheral;
-
-  ASSERT_TRUE(copy_periphera1_2.IsValid());
-  EXPECT_EQ(copy_periphera1_2.GetAddress(), adapter_a.GetMacAddress());
-  EXPECT_EQ(copy_periphera1_2.GetId(), id);
-  EXPECT_EQ(copy_periphera1_2.GetPsm(), 2);
-  MediumEnvironment::Instance().Stop();
-}
-
-TEST(BleV2PeripheralTest, MoveConstructorSuccess) {
-  MediumEnvironment::Instance().Start();
-  BluetoothAdapter adapter_a;
-  BluetoothAdapter adapter_b;
-  BleV2Medium ble_a(adapter_a);
-  BleV2Medium ble_b(adapter_b);
-  ByteArray id((std::string(kId)));
-  int psm = 2;
-
-  BleV2Peripheral peripheral =
-      ble_b.GetRemotePeripheral(adapter_a.GetMacAddress());
-  peripheral.SetId(id);
-  peripheral.SetPsm(psm);
-
-  BleV2Peripheral move_peripheral(std::move(peripheral));
-
-  ASSERT_TRUE(move_peripheral.IsValid());
-  EXPECT_EQ(move_peripheral.GetAddress(), adapter_a.GetMacAddress());
-  EXPECT_EQ(move_peripheral.GetId(), id);
-  EXPECT_EQ(move_peripheral.GetPsm(), 2);
-  MediumEnvironment::Instance().Stop();
-}
-
-TEST(BleV2PeripheralTest, MoveAssignmentSuccess) {
-  MediumEnvironment::Instance().Start();
-  BluetoothAdapter adapter_a;
-  BluetoothAdapter adapter_b;
-  BleV2Medium ble_a(adapter_a);
-  BleV2Medium ble_b(adapter_b);
-  ByteArray id((std::string(kId)));
-  int psm = 2;
-
-  BleV2Peripheral peripheral =
-      ble_b.GetRemotePeripheral(adapter_a.GetMacAddress());
-  peripheral.SetId(id);
-  peripheral.SetPsm(psm);
-
-  BleV2Peripheral move_peripheral = std::move(peripheral);
-
-  ASSERT_TRUE(move_peripheral.IsValid());
-  EXPECT_EQ(move_peripheral.GetAddress(), adapter_a.GetMacAddress());
-  EXPECT_EQ(move_peripheral.GetId(), id);
-  EXPECT_EQ(move_peripheral.GetPsm(), 2);
-  MediumEnvironment::Instance().Stop();
 }
 
 }  // namespace
